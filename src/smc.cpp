@@ -217,7 +217,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
             Rcout << probs_mat(ctr - 1, i) << ",";
         }
         
-        Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":";
+        Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":[";
         
         for(int i = 0; i < b2_mat.n_cols - 1; i++) {
             Rcout << b2_mat(ctr - 1, i) << ",";
