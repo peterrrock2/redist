@@ -46,7 +46,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     if (verbosity >= 1) {
         Rcout.imbue(std::locale(""));
         Rcout << std::fixed << std::setprecision(0);
-        Rcout << "{\"init\":\"SEQUENTIAL MONTE CARLOG\n";
+        Rcout << "{\"init\":\"SEQUENTIAL MONTE CARLO\n";
         Rcout << "Sampling " << N << " " << V << "-unit ";
         if (n_drawn + n_steps + 1 == n_distr) {
             Rcout << "maps with " << n_distr << " districts and population between "
