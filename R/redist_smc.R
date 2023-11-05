@@ -390,22 +390,22 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
     out <- out %>% mutate(b2_wgt =  as.vector((all_out[[1]]$b2_wgts_mat)))
 
 
-    # Convert each slice of the cube to a list of vectors
-    all_slices <- apply(all_out[[1]]$district_cube, 1, function(x) as.vector(t(x)))
+    # # Convert each slice of the cube to a list of vectors
+    # all_slices <- apply(all_out[[1]]$district_cube, 1, function(x) as.vector(t(x)))
 
 
-    # Create the column names for these new vectors
-    column_names <- paste0("nd_", seq_len(ncol(all_slices)))
+    # # Create the column names for these new vectors
+    # column_names <- paste0("nd_", seq_len(ncol(all_slices)))
 
-    # Convert 'all_slices' to a list of vectors where each list element is a column in 'all_slices'
-    all_slices_list <- as.list(as.data.frame(all_slices))
+    # # Convert 'all_slices' to a list of vectors where each list element is a column in 'all_slices'
+    # all_slices_list <- as.list(as.data.frame(all_slices))
 
-    # Name the list for easy binding
-    names(all_slices_list) <- column_names
+    # # Name the list for easy binding
+    # names(all_slices_list) <- column_names
 
-    # Use 'bind_cols' from dplyr to add these vectors as new columns
-    out <- out %>%
-        bind_cols(all_slices_list)
+    # # Use 'bind_cols' from dplyr to add these vectors as new columns
+    # out <- out %>%
+    #     bind_cols(all_slices_list)
 
 
     out
