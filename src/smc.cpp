@@ -46,7 +46,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     if (verbosity >= 1) {
         Rcout.imbue(std::locale(""));
         Rcout << std::fixed << std::setprecision(0);
-        Rcout << "SEQUENTIAL MONTE CARLO\n";
+        Rcout << "{\"init\":\"SEQUENTIAL MONTE CARLOG\n";
         Rcout << "Sampling " << N << " " << V << "-unit ";
         if (n_drawn + n_steps + 1 == n_distr) {
             Rcout << "maps with " << n_distr << " districts and population between "
@@ -72,6 +72,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
                 Rcout << "Using one-sided population checks.\n";
             }
         }
+        Rcout << "\"}";
     }
 
     vec pop_left(N);
@@ -110,7 +111,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
 
     mat probs_mat(n_steps + 1, N, fill::zeros);
     mat b2_mat(n_steps + 1, N, fill::zeros);
-    arma::ucube district_cube(districts.n_rows, districts.n_cols, n_steps + 1, fill::zeros);
+    // arma::ucube district_cube(districts.n_rows, districts.n_cols, n_steps + 1, fill::zeros);
 
     RcppThread::ThreadPool pool(cores);
 
@@ -163,7 +164,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         
         // At this point districts has the new plan in it
 
-        district_cube.slice(ctr - 1) = districts;
+        // district_cube.slice(ctr - 1) = districts;
         // district_cube.print("cubey boy");
 
         vec inc_only = lp - log_labels;
@@ -207,6 +208,38 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         if (verbosity == 1 && CLI_SHOULD_TICK)
             cli_progress_set(bar, i_split);
         Rcpp::checkUserInterrupt();
+
+        Rcout << std::fixed << std::setprecision(10);
+
+        Rcout << "\n{\"step\":" << ctr << ",\"b1_probs\":[";
+
+        for(int i = 0; i < probs_mat.n_cols - 1; i++) {
+            Rcout << probs_mat(ctr - 1, i) << ",";
+        }
+        
+        Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":";
+        
+        for(int i = 0; i < b2_mat.n_cols - 1; i++) {
+            Rcout << b2_mat(ctr - 1, i) << ",";
+        }
+        
+        Rcout << b2_mat(ctr - 1, N - 1) << "],\"districts\":[";
+
+        for(int i = 0; i < districts.n_cols; i++) { // iterate over rows
+            Rcout << "[";
+            for(int j = 0; j < districts.n_rows; j++) { // iterate over columns
+                Rcout << districts(j,i);
+                if (j < districts.n_rows - 1) {
+                    Rcout << ", ";
+                }
+            }
+            Rcout << "]";
+            if (i < districts.n_cols - 1) {
+                Rcout << ",";
+            }
+        }
+        Rcout << "]}";
+
     } // end for
     } catch (Rcpp::internal::InterruptedException e) {
         cli_progress_done(bar);
@@ -229,7 +262,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         }
     }
 
-    district_cube.slice(n_steps) = districts;
+    // district_cube.slice(n_steps) = districts;
     // district_cube.print("cubey boy");
 
     List out = List::create(
@@ -245,8 +278,8 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         _["unique_survive"] = n_unique,
         _["accept_rate"] = accept_rate,
         _["b1_probs_mat"] = probs_mat,
-        _["b2_wgts_mat"] = b2_mat,
-        _["district_cube"] = district_cube
+        _["b2_wgts_mat"] = b2_mat
+        // _["district_cube"] = district_cube  // This was taking up too much space in the output
     );
 
     return out;
