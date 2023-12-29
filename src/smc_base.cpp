@@ -21,10 +21,10 @@ void partition_vec(std::vector<double> &x, std::vector<int> &idxs, int left,
     std::swap(idxs[right], idxs[pivot]);
 }
 
+// TESTED
 /*
  * Get the index of the k-th smallest element of x
  */
-// TESTED
 int select_k(std::vector<double> x, int k) {
     int right = x.size() - 1;
     int left = 0;

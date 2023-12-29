@@ -465,6 +465,7 @@ NumericVector max_dev(const IntegerMatrix districts, const vec pop, int n_distr)
 
 /*
  * Calculate the deviation for cutting at every edge in a spanning tree.
+ * Returns a SORTED array of devs
  */
 std::vector<double> tree_dev(Tree &ust, int root, const uvec &pop,
                              double total_pop, double target) {
