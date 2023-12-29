@@ -125,6 +125,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     mat b2_mat(n_steps + 1, N, fill::zeros);
     umat progenitor_mat(n_steps + 1, N, fill::zeros); 
 
+
     RcppThread::ThreadPool pool(cores);
 
     // Peter Note: The initial splits are taken to be their own parents. 
