@@ -18,10 +18,10 @@ using namespace arma;
 
 #include "random.h"
 
+// TESTED
 /*
  * Get the index of the k-th smallest element of x
  */
-// TESTED
 int select_k(std::vector<double> x, int k);
 
 /*

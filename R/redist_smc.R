@@ -270,6 +270,7 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
                             pop_bounds[2], pop_bounds[1], pop_bounds[3],
                             compactness, init_particles, n_drawn, n_steps,
                             constraints, control, run_verbosity)
+
         # handle interrupt
         if (length(algout) == 0) {
             cli::cli_process_done()
@@ -289,7 +290,7 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
                              {.val {NA}} or {.val {Inf}}",
                 "*" = "If you are not using any constraints, please call
                              {.code rlang::trace_back()} and file an issue at
-                             {.url https://github.com/alarm-redist/redist/issues/new}"))
+                             {.url https://github.com/alarm-redist/redist/issues/new}")) 
         }
 
         n_unique <- NA
@@ -380,33 +381,19 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
             dplyr::relocate('chain', .after = "draw")
     }
 
-    exist_name <- attr(map, "existing_col")
-    if (!is.null(exist_name) && !isFALSE(ref_name) && ndists == final_dists) {
-        ref_name <- if (!is.null(ref_name)) ref_name else exist_name
-        out <- add_reference(out, map[[exist_name]], ref_name)
-    }
+    # Peter Note: This is where the reference plan is added. Commented 
+    # out for now because it interferes with the desired output for 
+    # the CA example.
+
+    # exist_name <- attr(map, "existing_col")
+    # if (!is.null(exist_name) && !isFALSE(ref_name) && ndists == final_dists) {
+    #     ref_name <- if (!is.null(ref_name)) ref_name else exist_name
+    #     out <- add_reference(out, map[[exist_name]], ref_name)
+    # }
 
     out <- out %>% mutate(b1_probs =  as.vector((all_out[[1]]$b1_probs_mat)))
     out <- out %>% mutate(b2_wgt =  as.vector((all_out[[1]]$b2_wgts_mat)))
-
-
-    # # Convert each slice of the cube to a list of vectors
-    # all_slices <- apply(all_out[[1]]$district_cube, 1, function(x) as.vector(t(x)))
-
-
-    # # Create the column names for these new vectors
-    # column_names <- paste0("nd_", seq_len(ncol(all_slices)))
-
-    # # Convert 'all_slices' to a list of vectors where each list element is a column in 'all_slices'
-    # all_slices_list <- as.list(as.data.frame(all_slices))
-
-    # # Name the list for easy binding
-    # names(all_slices_list) <- column_names
-
-    # # Use 'bind_cols' from dplyr to add these vectors as new columns
-    # out <- out %>%
-    #     bind_cols(all_slices_list)
-
+    out <- out %>% mutate(parent = as.vector((all_out[[1]]$all_progenitors)))
 
     out
 }

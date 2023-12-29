@@ -44,7 +44,7 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
                 double lower, double upper, double target,
                 double rho, int k, bool check_both,
                 RcppThread::ThreadPool &pool, int verbosity,
-                mat &b2_mat);
+                mat &b2_mat, umat &progenitor_mat);
 
 
 /*
