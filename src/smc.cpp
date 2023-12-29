@@ -46,6 +46,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     if (verbosity >= 1) {
         Rcout.imbue(std::locale(""));
         Rcout << std::fixed << std::setprecision(0);
+        Rcout << "{\"metadata\":\"";
         Rcout << "SEQUENTIAL MONTE CARLO\n";
         Rcout << "Sampling " << N << " " << V << "-unit ";
         if (n_drawn + n_steps + 1 == n_distr) {
@@ -72,6 +73,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
                 Rcout << "Using one-sided population checks.\n";
             }
         }
+        Rcout << "\"}";
     }
 
     vec pop_left(N);
@@ -108,11 +110,27 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     vec cum_wgt(N, fill::value(1.0 / N));
     cum_wgt = cumsum(cum_wgt);
 
+    // Peter Note: Added for decendency tracking for SMC note
+    // Names added to correspond to paper https://arxiv.org/abs/2008.06131
+    // dated Feb. 2023. probs_mat will store the probability 
+    // of selecting a given partial plan for use in the next generation;
+    // more specifically, the probabilities listed in part b.1.i in algorithm
+    // 2 on page 9. Likewise, b2_mat stores the probabilities from b.2 in the 
+    // same algorithm, and progenitor_mat stores in each row the parent plan for 
+    // the given plan. So if the (1-indexed) row 5 column 3 contains value 7, 
+    // then partial plan number 3 containing 5 districts obtained its 5th 
+    // district by spliting from the remaining space available in the previous
+    // generation's plan 7 which only contained 4 split districts
     mat probs_mat(n_steps + 1, N, fill::zeros);
     mat b2_mat(n_steps + 1, N, fill::zeros);
-    arma::ucube district_cube(districts.n_rows, districts.n_cols, n_steps + 1, fill::zeros);
+    umat progenitor_mat(n_steps + 1, N, fill::zeros); 
 
     RcppThread::ThreadPool pool(cores);
+
+    // Peter Note: The initial splits are taken to be their own parents. 
+    for (unsigned int i = 0; i < N; i++){
+        progenitor_mat(0,i) = i+1;
+    }
 
     std::string bar_fmt = "Split [{cli::pb_current}/{cli::pb_total}] {cli::pb_bar} | ETA{cli::pb_eta}";
     RObject bar = cli_progress_bar(n_steps, cli_config(false, bar_fmt.c_str()));
@@ -139,19 +157,6 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
             upper = target + (upper - target) * final_infl;
         }
 
-        // // Print out the cumulative weights for the plans
-        // Rcout << std::fixed << std::setprecision(10);
-        // Rcout << "Probabilities for previous maps ";
-        // // Rcout << static_cast<double>(cum_wgt.n_elem * cum_wgt(0)) << ", ";
-        // Rcout << static_cast<double>(cum_wgt(0)) << ", ";
-        // for (int i = 1; i < cum_wgt.n_elem - 1; i++) {
-        //     // Rcout << static_cast<double>(cum_wgt.n_elem * (cum_wgt(i) - cum_wgt(i - 1))) << ", ";
-        //     Rcout << static_cast<double>((cum_wgt(i) - cum_wgt(i - 1))) << ", ";
-        // }
-        // // Rcout << static_cast<double>(cum_wgt.n_elem * (cum_wgt.tail(1)(0) - cum_wgt.tail(2)(0))) << ", ";
-        // Rcout << static_cast<double>((cum_wgt.tail(1)(0) - cum_wgt.tail(2)(0))) << ", ";
-        // Rcout << "\n";
-
 
         split_maps(g, counties, cg, pop, districts, cum_wgt, lp, pop_left,
                    log_temper, pop_temper, accept_rate[i_split],
@@ -159,13 +164,8 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
                    adjust_labels, est_label_mult, n_unique[i_split],
                    lower, upper, target,
                    rho, cut_k[i_split], check_both, pool, verbosity,
-                   b2_mat);
+                   b2_mat, progenitor_mat);
         
-        // At this point districts has the new plan in it
-
-        district_cube.slice(ctr - 1) = districts;
-        // district_cube.print("cubey boy");
-
         vec inc_only = lp - log_labels;
         sd_labels[i_split] = stddev(log_labels);
         sd_lp[i_split] = stddev(inc_only);
@@ -179,24 +179,6 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
                            n_eff[i_split], pop, target, g, constraints,
                            verbosity);
 
-        // if (!final) {
-        // {
-        //     // Print out the cumulative weights for the plans
-        //     Rcout << std::fixed << std::setprecision(10);
-        //     Rcout << "Probabilities for the next maps \n\t" ;
-        //     // Rcout << static_cast<double>(cum_wgt.n_elem * cum_wgt(0)) << ", ";
-        //     probs_mat(ctr-1, 0) = cum_wgt(0);
-        //     Rcout << static_cast<double>(probs_mat(ctr -1, 0)) << ", ";
-        //     for (int i = 1; i < cum_wgt.n_elem - 1; i++) {
-        //         // Rcout << static_cast<double>(cum_wgt.n_elem * (cum_wgt(i) - cum_wgt(i - 1))) << ", ";
-        //         probs_mat(ctr-1, i) = (cum_wgt(i) - cum_wgt(i - 1));
-        //         Rcout << static_cast<double>(probs_mat(ctr - 1, i)) << ", ";
-        //     }
-        //     // Rcout << static_cast<double>(cum_wgt.n_elem * (cum_wgt.tail(1)(0) - cum_wgt.tail(2)(0))) << ", ";
-        //     probs_mat(ctr-1, N - 1) = (cum_wgt(N - 1) - cum_wgt(N - 2));
-        //     Rcout << static_cast<double>(probs_mat(ctr-1, N-1)) << std::endl;
-        // }
-        
         probs_mat(ctr-1, 0) = cum_wgt(0);
         for (int i = 1; i < cum_wgt.n_elem - 1; i++) {
             probs_mat(ctr-1, i) = (cum_wgt(i) - cum_wgt(i - 1));
@@ -207,6 +189,27 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         if (verbosity == 1 && CLI_SHOULD_TICK)
             cli_progress_set(bar, i_split);
         Rcpp::checkUserInterrupt();
+        Rcout << std::fixed << std::setprecision(10);
+
+        Rcout << "\n{\"step\":" << ctr << ",\"b1_probs\":[";
+
+        for(int i = 0; i < probs_mat.n_cols - 1; i++) {
+            Rcout << probs_mat(ctr - 1, i) << ",";
+        }
+
+        Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":[";
+
+        for(int i = 0; i < b2_mat.n_cols - 1; i++) {
+            Rcout << b2_mat(ctr - 1, i) << ",";
+        }
+
+        Rcout << b2_mat(ctr - 1, N - 1) << "],\"progenitors\":[";
+
+        for(int i = 0; i < progenitor_mat.n_cols - 1; i++) {
+            Rcout << progenitor_mat(ctr - 1, i) << ",";
+        }
+
+        Rcout << progenitor_mat(ctr - 1, N - 1) << "]}";
     } // end for
     } catch (Rcpp::internal::InterruptedException e) {
         cli_progress_done(bar);
@@ -229,9 +232,6 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         }
     }
 
-    district_cube.slice(n_steps) = districts;
-    // district_cube.print("cubey boy");
-
     List out = List::create(
         _["plans"] = districts,
         _["lp"] = lp,
@@ -246,7 +246,7 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         _["accept_rate"] = accept_rate,
         _["b1_probs_mat"] = probs_mat,
         _["b2_wgts_mat"] = b2_mat,
-        _["district_cube"] = district_cube
+        _["all_progenitors"] = progenitor_mat
     );
 
     return out;
@@ -288,9 +288,6 @@ vec get_wgts(const umat &districts, int n_distr, int distr_ctr, bool final,
     } else {
         distr_calc = {distr_ctr};
     }
-
-    // Rcout << std::fixed << std::setprecision(10);
-    // lp.raw_print(Rcout, "lp=");
 
     if (constraints.size() > 0) {
     for (int i = 0; i < N; i++) {
@@ -396,11 +393,8 @@ vec get_wgts(const umat &districts, int n_distr, int distr_ctr, bool final,
     } // if
 
 
-    // Peter Note: Here we have that the weights in lp are actually log(1/w^(j)_i) and 
-    // to get the cdf we need to multiply by a negative.  
     vec wgt = exp(-alpha * lp);
 
-    // This will affect the final iteration!!!
     if (!final) // not the last iteration
         lp = lp * (1 - alpha);
     vec cuml_wgt = cumsum(wgt);
@@ -428,7 +422,7 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
                 double lower, double upper, double target,
                 double rho, int k, bool check_both,
                 RcppThread::ThreadPool &pool, int verbosity,
-                mat &b2_mat) {
+                mat &b2_mat, umat &progenitor_mat) {
     const int V = districts.n_rows;
     const int N = districts.n_cols;
     const int new_size = n_distr - dist_ctr;
@@ -480,8 +474,6 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
                 continue;
             }
 
-            // Peter Note: This will return the log of the number of cut boundary 
-            // edges
             inc_lp = split_map(g, counties, cg, districts_new.col(i), dist_ctr,
                                pop, pop_left(idx), lower_s, upper_s, target, k);
 
@@ -495,9 +487,6 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
         }
         uniques[i] = idx;
 
-        // Rcout << "The inc_lp is " << inc_lp << "\n";
-        // Rcout << "The number of cut edges is " << exp(inc_lp) << "\n";
-
         // save ancestors/lags
         for (int j = 0; j < n_lags; j++) {
             if (dist_ctr <= lags[j]) {
@@ -508,6 +497,7 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
         }
 
         // make/update district graphs
+        // Peter Note: The value log_labels_new is phi from the paper
         if (adjust_labels) {
             if (dist_ctr == 1) {
                 dist_grs_new[i] = init_tree(2);
@@ -546,16 +536,9 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
                 log_st += log_st_contr(g, districts_new, counties, n_cty, i, 0);
             }
 
-            // Rcout << "The tau^(1 - rho) is " << exp((1-rho) * log_st) << std::endl;
-
-            Rcout << "The expected weight according to b.2 is " 
-              << exp( (rho - 1) * log_st - inc_lp) << "\n";
-
             inc_lp += (1 - rho) * log_st;
         } 
         b2_wgts(i) = exp(-inc_lp); 
-
-        // Rcout << "Weight for next plan = " << exp(inc_lp) << "\n";        
 
 
         // `lower_s` now contains the population of the newly-split district
@@ -563,12 +546,6 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
         double dev = std::fabs(lower_s - target)/target;
         double pop_pen = std::sqrt((double) n_distr - 2) * std::log(1e-12 + dev);
         log_temper_new(i) = log_temper(idx) + pop_temper*pop_pen;
-
-        // Rcout << "Printing each of the terms"
-        //   << "\n\tinc_lp " << inc_lp
-        //   << "\n\tlog_labels_new[i] " << log_labels_new[i] 
-        //   << "\n\tlog_labels[idx] " << log_labels[idx] 
-        //   << "\n";
 
         lp_new(i) = lp(idx) + inc_lp + log_labels_new[i] - log_labels[idx] + pop_temper*pop_pen;
 
@@ -580,20 +557,13 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
     pool.wait();
         
 
-    // Rcout << "The new log_labels are ";
-    // for(auto item:log_labels_new) {
-    //     Rcout << item << ", ";
-    // }
-    // Rcout << std::endl;
+    progenitor_mat.row(dist_ctr) = uniques + 1; 
 
     accept_rate = N / (1.0 * sum(iters));
     if (verbosity >= 3) {
         Rcout << "  " << std::setprecision(2) << 100.0 * accept_rate << "% acceptance rate, ";
     }
-    // districts.print("Old_districts");
-    // districts_new.print("New_districts");
 
-    // b2_wgts.print("Here are the b2 weights");
     b2_mat.row(dist_ctr - 1) = b2_wgts;
 
     districts = districts_new;
@@ -634,10 +604,10 @@ double split_map(const Graph &g, const uvec &counties, Multigraph &cg,
 }
 
 
+// TESTED
 /*
  * Cut district into two pieces of roughly equal population
  */
-// TESTED
 double cut_districts(Tree &ust, int k, int root, subview_col<uword> &districts,
                      int dist_ctr, const uvec &pop, double total_pop,
                      double lower, double upper, double target) {
@@ -715,6 +685,7 @@ void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double 
     double lower = target * (1 - tol);
     double upper = target * (1 + tol);
 
+    // 2D array(not nec. sq.) of sampled usts (rows) and their deviations (cols)
     std::vector<std::vector<double>> devs;
     devs.reserve(N_adapt);
     vec distr_ok(k_max+1, fill::zeros);
@@ -745,6 +716,7 @@ void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double 
             continue;
         }
 
+        // For this tree return the vector of devs for the cut
         devs.push_back(tree_dev(ust, root, pop, pop_left(i), target));
         int n_ok = 0;
         for (int j = 0; j < V-1; j++) {
