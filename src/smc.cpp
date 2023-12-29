@@ -7,7 +7,6 @@
 
 #include "smc.h"
 
-
 /*
  * Main entry point.
  *
@@ -17,22 +16,25 @@
 List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
                int n_distr, double target, double lower, double upper, double rho,
                umat districts, int n_drawn, int n_steps,
-               List constraints, List control, int verbosity) {
+               List constraints, List control, int verbosity)
+{
     // re-seed MT so that `set.seed()` works in R
-    seed_rng((int) Rcpp::sample(INT_MAX, 1)[0]);
+    seed_rng((int)Rcpp::sample(INT_MAX, 1)[0]);
 
     // unpack control params
-    double thresh = (double) control["adapt_k_thresh"];
-    double alpha = (double) control["seq_alpha"];
-    double pop_temper = (double) control["pop_temper"];
-    double est_label_mult = (double) control["est_label_mult"];
-    bool adjust_labels = (bool) control["adjust_labels"];
-    double final_infl = (double) control["final_infl"];
+    double thresh = (double)control["adapt_k_thresh"];
+    double alpha = (double)control["seq_alpha"];
+    double pop_temper = (double)control["pop_temper"];
+    double est_label_mult = (double)control["est_label_mult"];
+    bool adjust_labels = (bool)control["adjust_labels"];
+    double final_infl = (double)control["final_infl"];
     std::vector<int> lags = as<std::vector<int>>(control["lags"]);
 
-    int cores = (int) control["cores"];
-    if (cores <= 0) cores = std::thread::hardware_concurrency();
-    if (cores == 1) cores = 0;
+    int cores = (int)control["cores"];
+    if (cores <= 0)
+        cores = std::thread::hardware_concurrency();
+    if (cores == 1)
+        cores = 0;
 
     Graph g = list_to_graph(l);
     Multigraph cg = county_graph(g, counties);
@@ -40,36 +42,47 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
     if (districts.n_rows != V || districts.n_cols != N)
         throw std::range_error("Initialization districts have wrong dimensions.");
     double total_pop = sum(pop);
-    bool check_both = total_pop/n_distr > lower && total_pop/n_distr < upper;
+    bool check_both = total_pop / n_distr > lower && total_pop / n_distr < upper;
     double tol = std::max(target - lower, upper - target) / target;
 
-    if (verbosity >= 1) {
+    if (verbosity >= 1)
+    {
         Rcout.imbue(std::locale(""));
         Rcout << std::fixed << std::setprecision(0);
         Rcout << "{\"metadata\":\"";
         Rcout << "SEQUENTIAL MONTE CARLO\n";
         Rcout << "Sampling " << N << " " << V << "-unit ";
-        if (n_drawn + n_steps + 1 == n_distr) {
+        if (n_drawn + n_steps + 1 == n_distr)
+        {
             Rcout << "maps with " << n_distr << " districts and population between "
-                << lower << " and " << upper << ".\n";
-        } else {
+                  << lower << " and " << upper << ".\n";
+        }
+        else
+        {
             Rcout << "partial maps of " << n_drawn + n_steps + 1
-                << " districts and population between "
-                << lower << " and " << upper << ".\n";
+                  << " districts and population between "
+                  << lower << " and " << upper << ".\n";
         }
         if (cg.size() > 1)
             Rcout << "Ensuring no more than " << n_distr - 1 << " splits of the "
                   << cg.size() << " administrative units.\n";
-        if (verbosity >= 3) {
-            if (cores == 0) {
+        if (verbosity >= 3)
+        {
+            if (cores == 0)
+            {
                 Rcout << "Using 1 core.\n";
-            } else {
+            }
+            else
+            {
                 Rcout << "Using " << cores << " cores.\n";
             }
 
-            if (check_both) {
+            if (check_both)
+            {
                 Rcout << "Using two-sided population checks.\n";
-            } else {
+            }
+            else
+            {
                 Rcout << "Using one-sided population checks.\n";
             }
         }
@@ -78,19 +91,25 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
 
     vec pop_left(N);
     std::vector<Graph> dist_grs(N);
-    if (n_drawn == 0) {
+    if (n_drawn == 0)
+    {
         pop_left.fill(total_pop);
-    } else {
+    }
+    else
+    {
         // compute population not assigned (i.e., in district '0')
         pop_left.fill(0.0);
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < V; j++) {
-                if (districts(j, i) == 0) {
+        for (int i = 0; i < N; i++)
+        {
+            for (int j = 0; j < V; j++)
+            {
+                if (districts(j, i) == 0)
+                {
                     pop_left[i] += pop[j];
                 }
             }
 
-            dist_grs[i] = district_graph(g, districts.col(i), n_drawn+1, true);
+            dist_grs[i] = district_graph(g, districts.col(i), n_drawn + 1, true);
         }
     }
 
@@ -112,121 +131,141 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
 
     // Peter Note: Added for decendency tracking for SMC note
     // Names added to correspond to paper https://arxiv.org/abs/2008.06131
-    // dated Feb. 2023. probs_mat will store the probability 
+    // dated Feb. 2023. probs_mat will store the probability
     // of selecting a given partial plan for use in the next generation;
     // more specifically, the probabilities listed in part b.1.i in algorithm
-    // 2 on page 9. Likewise, b2_mat stores the probabilities from b.2 in the 
-    // same algorithm, and progenitor_mat stores in each row the parent plan for 
-    // the given plan. So if the (1-indexed) row 5 column 3 contains value 7, 
-    // then partial plan number 3 containing 5 districts obtained its 5th 
+    // 2 on page 9. Likewise, b2_mat stores the probabilities from b.2 in the
+    // same algorithm, and progenitor_mat stores in each row the parent plan for
+    // the given plan. So if the (1-indexed) row 5 column 3 contains value 7,
+    // then partial plan number 3 containing 5 districts obtained its 5th
     // district by spliting from the remaining space available in the previous
     // generation's plan 7 which only contained 4 split districts
     mat probs_mat(n_steps + 1, N, fill::zeros);
     mat b2_mat(n_steps + 1, N, fill::zeros);
-    umat progenitor_mat(n_steps + 1, N, fill::zeros); 
+    umat progenitor_mat(n_steps + 1, N, fill::zeros);
 
     RcppThread::ThreadPool pool(cores);
 
-    // Peter Note: The initial splits are taken to be their own parents. 
-    for (unsigned int i = 0; i < N; i++){
-        progenitor_mat(0,i) = i+1;
+    // Peter Note: The initial splits are taken to be their own parents.
+    for (unsigned int i = 0; i < N; i++)
+    {
+        progenitor_mat(0, i) = i + 1;
+    }
+
+    // Peter Note: The initial splits are taken to be their own parents.
+    for (unsigned int i = 0; i < N; i++)
+    {
+        progenitor_mat(0, i) = i + 1;
     }
 
     std::string bar_fmt = "Split [{cli::pb_current}/{cli::pb_total}] {cli::pb_bar} | ETA{cli::pb_eta}";
     RObject bar = cli_progress_bar(n_steps, cli_config(false, bar_fmt.c_str()));
-    try {
-    for (int ctr = n_drawn + 1; ctr <= n_drawn + n_steps; ctr++) {
-        int i_split = ctr - n_drawn - 1;
-        if (verbosity >= 3) {
-            Rcout << "Making split " << ctr - n_drawn << " of " << n_steps;
-        }
+    try
+    {
+        for (int ctr = n_drawn + 1; ctr <= n_drawn + n_steps; ctr++)
+        {
+            int i_split = ctr - n_drawn - 1;
+            if (verbosity >= 3)
+            {
+                Rcout << "Making split " << ctr - n_drawn << " of " << n_steps;
+            }
 
-        // find k and multipliers
-        int last_k = i_split == 0 ? std::max(1, V - 5) : cut_k[i_split - 1];
-        adapt_parameters(g, cut_k[i_split], last_k, lp, thresh, tol, districts,
-                         counties, cg, pop, pop_left, target, verbosity);
+            // find k and multipliers
+            int last_k = i_split == 0 ? std::max(1, V - 5) : cut_k[i_split - 1];
+            adapt_parameters(g, cut_k[i_split], last_k, lp, thresh, tol, districts,
+                             counties, cg, pop, pop_left, target, verbosity);
 
-        if (verbosity >= 3) {
-            Rcout << " (using k = " << cut_k[i_split] << ")\n";
-        }
+            if (verbosity >= 3)
+            {
+                Rcout << " (using k = " << cut_k[i_split] << ")\n";
+            }
 
-        // perform resampling/drawing
-        bool final = ctr == n_drawn + n_steps;
-        if (final) {
-            lower = target - (target - lower) * final_infl;
-            upper = target + (upper - target) * final_infl;
-        }
+            // perform resampling/drawing
+            bool final = ctr == n_drawn + n_steps;
+            if (final)
+            {
+                lower = target - (target - lower) * final_infl;
+                upper = target + (upper - target) * final_infl;
+            }
 
+            split_maps(g, counties, cg, pop, districts, cum_wgt, lp, pop_left,
+                       log_temper, pop_temper, accept_rate[i_split],
+                       n_distr, ctr, dist_grs, log_labels, ancestors, lags,
+                       adjust_labels, est_label_mult, n_unique[i_split],
+                       lower, upper, target,
+                       rho, cut_k[i_split], check_both, pool, verbosity,
+                       b2_mat, progenitor_mat);
 
-        split_maps(g, counties, cg, pop, districts, cum_wgt, lp, pop_left,
-                   log_temper, pop_temper, accept_rate[i_split],
-                   n_distr, ctr, dist_grs, log_labels, ancestors, lags,
-                   adjust_labels, est_label_mult, n_unique[i_split],
-                   lower, upper, target,
-                   rho, cut_k[i_split], check_both, pool, verbosity,
-                   b2_mat, progenitor_mat);
-        
-        vec inc_only = lp - log_labels;
-        sd_labels[i_split] = stddev(log_labels);
-        sd_lp[i_split] = stddev(inc_only);
-        sd_temper[i_split] = stddev(log_temper);
-        if (i_split >= 1) {
-            cor_labels[i_split] = ((mat) cor(log_labels, inc_only))(0, 0);
-        }
+            vec inc_only = lp - log_labels;
+            sd_labels[i_split] = stddev(log_labels);
+            sd_lp[i_split] = stddev(inc_only);
+            sd_temper[i_split] = stddev(log_temper);
+            if (i_split >= 1)
+            {
+                cor_labels[i_split] = ((mat)cor(log_labels, inc_only))(0, 0);
+            }
 
-        // compute weights for next step
-        cum_wgt = get_wgts(districts, n_distr, ctr, final, alpha, lp,
-                           n_eff[i_split], pop, target, g, constraints,
-                           verbosity);
+            // compute weights for next step
+            cum_wgt = get_wgts(districts, n_distr, ctr, final, alpha, lp,
+                               n_eff[i_split], pop, target, g, constraints,
+                               verbosity);
 
-        probs_mat(ctr-1, 0) = cum_wgt(0);
-        for (int i = 1; i < cum_wgt.n_elem - 1; i++) {
-            probs_mat(ctr-1, i) = (cum_wgt(i) - cum_wgt(i - 1));
-        }
-        probs_mat(ctr-1, N - 1) = (cum_wgt(N - 1) - cum_wgt(N - 2));
+            probs_mat(ctr - 1, 0) = cum_wgt(0);
+            for (int i = 1; i < cum_wgt.n_elem - 1; i++)
+            {
+                probs_mat(ctr - 1, i) = (cum_wgt(i) - cum_wgt(i - 1));
+            }
+            probs_mat(ctr - 1, N - 1) = (cum_wgt(N - 1) - cum_wgt(N - 2));
 
+            if (verbosity == 1 && CLI_SHOULD_TICK)
+                cli_progress_set(bar, i_split);
+            Rcpp::checkUserInterrupt();
+            Rcout << std::fixed << std::setprecision(10);
 
-        if (verbosity == 1 && CLI_SHOULD_TICK)
-            cli_progress_set(bar, i_split);
-        Rcpp::checkUserInterrupt();
-        Rcout << std::fixed << std::setprecision(10);
+            Rcout << "\n{\"step\":" << ctr << ",\"b1_probs\":[";
 
-        Rcout << "\n{\"step\":" << ctr << ",\"b1_probs\":[";
+            for (int i = 0; i < probs_mat.n_cols - 1; i++)
+            {
+                Rcout << probs_mat(ctr - 1, i) << ",";
+            }
 
-        for(int i = 0; i < probs_mat.n_cols - 1; i++) {
-            Rcout << probs_mat(ctr - 1, i) << ",";
-        }
+            Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":[";
 
-        Rcout << probs_mat(ctr - 1, N - 1) << "],\"b2_wgts\":[";
+            for (int i = 0; i < b2_mat.n_cols - 1; i++)
+            {
+                Rcout << b2_mat(ctr - 1, i) << ",";
+            }
 
-        for(int i = 0; i < b2_mat.n_cols - 1; i++) {
-            Rcout << b2_mat(ctr - 1, i) << ",";
-        }
+            Rcout << b2_mat(ctr - 1, N - 1) << "],\"progenitors\":[";
 
-        Rcout << b2_mat(ctr - 1, N - 1) << "],\"progenitors\":[";
+            for (int i = 0; i < progenitor_mat.n_cols - 1; i++)
+            {
+                Rcout << progenitor_mat(ctr - 1, i) << ",";
+            }
 
-        for(int i = 0; i < progenitor_mat.n_cols - 1; i++) {
-            Rcout << progenitor_mat(ctr - 1, i) << ",";
-        }
-
-        Rcout << progenitor_mat(ctr - 1, N - 1) << "]}";
-    } // end for
-    } catch (Rcpp::internal::InterruptedException e) {
+            Rcout << progenitor_mat(ctr - 1, N - 1) << "]}";
+        } // end for
+    }
+    catch (Rcpp::internal::InterruptedException e)
+    {
         cli_progress_done(bar);
         return R_NilValue;
     }
     cli_progress_done(bar);
 
     lp = lp - log_temper;
-    if (n_steps < n_distr - 1) {
+    if (n_steps < n_distr - 1)
+    {
         lp -= log_labels;
     }
 
-
-    if (n_drawn + n_steps + 1 == n_distr) {
+    if (n_drawn + n_steps + 1 == n_distr)
+    {
         // Set final district label to n_distr rather than 0
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < V; j++) {
+        for (int i = 0; i < N; i++)
+        {
+            for (int j = 0; j < V; j++)
+            {
                 districts(j, i) = districts(j, i) == 0 ? n_distr : districts(j, i);
             }
         }
@@ -246,26 +285,28 @@ List smc_plans(int N, List l, const uvec &counties, const uvec &pop,
         _["accept_rate"] = accept_rate,
         _["b1_probs_mat"] = probs_mat,
         _["b2_wgts_mat"] = b2_mat,
-        _["all_progenitors"] = progenitor_mat
-    );
+        _["all_progenitors"] = progenitor_mat);
 
     return out;
 }
 
-
 /*
  * Helper function to iterate over constraints and apply them
  */
-double add_constraint(const std::string& name, List constraints,
-                      std::function<double(List)> fn_constr) {
-    if (!constraints.containsElementNamed(name.c_str())) return 0;
+double add_constraint(const std::string &name, List constraints,
+                      std::function<double(List)> fn_constr)
+{
+    if (!constraints.containsElementNamed(name.c_str()))
+        return 0;
 
     List constr = constraints[name];
     double val = 0;
-    for (int i = 0; i < constr.size(); i++) {
+    for (int i = 0; i < constr.size(); i++)
+    {
         List constr_inst = constr[i];
         double strength = constr_inst["strength"];
-        if (strength != 0) {
+        if (strength != 0)
+        {
             val += strength * fn_constr(constr_inst);
         }
     }
@@ -278,120 +319,141 @@ double add_constraint(const std::string& name, List constraints,
 vec get_wgts(const umat &districts, int n_distr, int distr_ctr, bool final,
              double alpha, vec &lp, double &neff,
              const uvec &pop, double parity, const Graph g,
-             List constraints, int verbosity) {
+             List constraints, int verbosity)
+{
     int V = districts.n_rows;
     int N = districts.n_cols;
 
     std::vector<int> distr_calc;
-    if (final) {
+    if (final)
+    {
         distr_calc = {distr_ctr, 0};
-    } else {
+    }
+    else
+    {
         distr_calc = {distr_ctr};
     }
 
-    if (constraints.size() > 0) {
-    for (int i = 0; i < N; i++) {
-        for (int j : distr_calc) {
-            lp[i] += add_constraint("pop_dev", constraints,
-                                      [&] (List l) -> double {
-                                          return eval_pop_dev(districts.col(i), j,
-                                                                 pop, parity);
-                                      });
+    if (constraints.size() > 0)
+    {
+        for (int i = 0; i < N; i++)
+        {
+            for (int j : distr_calc)
+            {
+                lp[i] += add_constraint("pop_dev", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_pop_dev(districts.col(i), j,
+                                                                pop, parity);
+                                        });
 
-            lp[i] += add_constraint("status_quo", constraints,
-                [&] (List l) -> double {
-                    return eval_sq_entropy(districts.col(i), as<uvec>(l["current"]),
-                                           j, pop, n_distr,
-                                           as<int>(l["n_current"]), V);
-                });
+                lp[i] += add_constraint("status_quo", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_sq_entropy(districts.col(i), as<uvec>(l["current"]),
+                                                                   j, pop, n_distr,
+                                                                   as<int>(l["n_current"]), V);
+                                        });
 
-            lp[i] += add_constraint("segregation", constraints,
-                                      [&] (List l) -> double {
-                                          return eval_segregation(districts.col(i), j,
+                lp[i] += add_constraint("segregation", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_segregation(districts.col(i), j,
+                                                                    as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]));
+                                        });
+
+                lp[i] += add_constraint("grp_pow", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_grp_pow(districts.col(i), j,
+                                                                as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]),
+                                                                as<double>(l["tgt_group"]), as<double>(l["tgt_other"]),
+                                                                as<double>(l["pow"]));
+                                        });
+
+                lp[i] += add_constraint("compet", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            uvec dvote = l["dvote"];
+                                            uvec total = dvote + as<uvec>(l["rvote"]);
+                                            return eval_grp_pow(districts.col(i), j,
+                                                                dvote, total, 0.5, 0.5, as<double>(l["pow"]));
+                                        });
+
+                lp[i] += add_constraint("grp_hinge", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_grp_hinge(districts.col(i), j, as<vec>(l["tgts_group"]),
                                                                   as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]));
-                                      });
+                                        });
 
-            lp[i] += add_constraint("grp_pow", constraints,
-                [&] (List l) -> double {
-                    return eval_grp_pow(districts.col(i), j,
-                                        as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]),
-                                        as<double>(l["tgt_group"]), as<double>(l["tgt_other"]),
-                                        as<double>(l["pow"]));
-                });
+                lp[i] += add_constraint("grp_inv_hinge", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_grp_hinge(districts.col(i), j, as<vec>(l["tgts_group"]),
+                                                                  as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]));
+                                        });
 
-            lp[i] += add_constraint("compet", constraints,
-                [&] (List l) -> double {
-                    uvec dvote = l["dvote"];
-                    uvec total = dvote + as<uvec>(l["rvote"]);
-                    return eval_grp_pow(districts.col(i), j,
-                                        dvote, total, 0.5, 0.5, as<double>(l["pow"]));
-                });
+                lp[i] += add_constraint("incumbency", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_inc(districts.col(i), j, as<uvec>(l["incumbents"]));
+                                        });
 
-            lp[i] += add_constraint("grp_hinge", constraints,
-                [&] (List l) -> double {
-                    return eval_grp_hinge(districts.col(i), j, as<vec>(l["tgts_group"]),
-                                          as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]));
-                });
+                lp[i] += add_constraint("splits", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_splits(districts.col(i), j, as<uvec>(l["admin"]), l["n"], true);
+                                        });
 
-            lp[i] += add_constraint("grp_inv_hinge", constraints,
-                                    [&] (List l) -> double {
-                                        return eval_grp_hinge(districts.col(i), j, as<vec>(l["tgts_group"]),
-                                                              as<uvec>(l["group_pop"]), as<uvec>(l["total_pop"]));
-                                    });
+                lp[i] += add_constraint("multisplits", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_multisplits(districts.col(i), j, as<uvec>(l["admin"]), l["n"], true);
+                                        });
 
-            lp[i] += add_constraint("incumbency", constraints,
-                [&] (List l) -> double {
-                    return eval_inc(districts.col(i), j, as<uvec>(l["incumbents"]));
-                });
+                lp[i] += add_constraint("total_splits", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_total_splits(districts.col(i), j, as<uvec>(l["admin"]), l["n"]);
+                                        });
 
-            lp[i] += add_constraint("splits", constraints,
-                [&] (List l) -> double {
-                    return eval_splits(districts.col(i), j, as<uvec>(l["admin"]), l["n"], true);
-                });
+                lp[i] += add_constraint("polsby", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_polsby(districts.col(i), j,
+                                                               as<ivec>(l["from"]),
+                                                               as<ivec>(l["to"]), as<vec>(l["area"]),
+                                                               as<vec>(l["perimeter"]));
+                                        });
 
-            lp[i] += add_constraint("multisplits", constraints,
-                [&] (List l) -> double {
-                    return eval_multisplits(districts.col(i), j, as<uvec>(l["admin"]), l["n"], true);
-                });
+                lp[i] += add_constraint("fry_hold", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_fry_hold(districts.col(i), j,
+                                                                 as<uvec>(l["total_pop"]),
+                                                                 as<mat>(l["ssdmat"]),
+                                                                 as<double>(l["denominator"]));
+                                        });
 
-            lp[i] += add_constraint("total_splits", constraints,
-                [&] (List l) -> double {
-                    return eval_total_splits(districts.col(i), j, as<uvec>(l["admin"]), l["n"]);
-                });
+                lp[i] += add_constraint("qps", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            return eval_qps(districts.col(i), j,
+                                                            as<uvec>(l["total_pop"]),
+                                                            as<uvec>(l["cities"]), as<int>(l["n_city"]),
+                                                            n_distr);
+                                        });
 
-            lp[i] += add_constraint("polsby", constraints,
-                                      [&] (List l) -> double {
-                                          return eval_polsby(districts.col(i), j,
-                                                             as<ivec>(l["from"]),
-                                                             as<ivec>(l["to"]), as<vec>(l["area"]),
-                                                             as<vec>(l["perimeter"]));
-                                      });
-
-            lp[i] += add_constraint("fry_hold", constraints,
-                                      [&] (List l) -> double {
-                                          return eval_fry_hold(districts.col(i), j,
-                                                               as<uvec>(l["total_pop"]),
-                                                               as<mat>(l["ssdmat"]),
-                                                               as<double>(l["denominator"]));
-                                      });
-
-            lp[i] += add_constraint("qps", constraints,
-                                      [&] (List l) -> double {
-                                          return eval_qps(districts.col(i), j,
-                                                          as<uvec>(l["total_pop"]),
-                                                          as<uvec>(l["cities"]), as<int>(l["n_city"]),
-                                                          n_distr);
-                                      });
-
-            lp[i] += add_constraint("custom", constraints,
-                [&] (List l) -> double {
-                    Function fn = l["fn"];
-                    return as<NumericVector>(fn(districts.col(i), j))[0];
-                });
-        }
-    } // for
+                lp[i] += add_constraint("custom", constraints,
+                                        [&](List l) -> double
+                                        {
+                                            Function fn = l["fn"];
+                                            return as<NumericVector>(fn(districts.col(i), j))[0];
+                                        });
+            }
+        } // for
     } // if
-
 
     vec wgt = exp(-alpha * lp);
 
@@ -399,14 +461,14 @@ vec get_wgts(const umat &districts, int n_distr, int distr_ctr, bool final,
         lp = lp * (1 - alpha);
     vec cuml_wgt = cumsum(wgt);
 
-    neff = cuml_wgt[N-1] * cuml_wgt[N-1]  / sum(square(wgt));
-    if (verbosity >= 3) {
-        Rcout << std::setprecision(1) << 100*neff/N <<  "% efficiency.\n";
+    neff = cuml_wgt[N - 1] * cuml_wgt[N - 1] / sum(square(wgt));
+    if (verbosity >= 3)
+    {
+        Rcout << std::setprecision(1) << 100 * neff / N << "% efficiency.\n";
     }
 
-    return cuml_wgt / cuml_wgt[N-1];
+    return cuml_wgt / cuml_wgt[N - 1];
 }
-
 
 /*
  * Split off a piece from each map in `districts`,
@@ -422,14 +484,15 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
                 double lower, double upper, double target,
                 double rho, int k, bool check_both,
                 RcppThread::ThreadPool &pool, int verbosity,
-                mat &b2_mat, umat &progenitor_mat) {
+                mat &b2_mat, umat &progenitor_mat)
+{
     const int V = districts.n_rows;
     const int N = districts.n_cols;
     const int new_size = n_distr - dist_ctr;
     const int n_cty = max(counties);
     const int n_lags = lags.size();
     // heuristic for how many iterations to use in estimating labels, adjusted by user factor
-    const int n_est_label = std::floor((dist_ctr == n_distr-1 ? 100 : 30) *
+    const int n_est_label = std::floor((dist_ctr == n_distr - 1 ? 100 : 30) *
                                        (2 + dist_ctr) * est_label_mult);
 
     umat districts_new(V, N);
@@ -442,13 +505,14 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
     uvec uniques(N);
 
     const int reject_check_int = 200; // check for interrupts every _ rejections
-    const int check_int = 50; // check for interrupts every _ iterations
-    uvec iters(N, fill::zeros); // how many actual iterations
+    const int check_int = 50;         // check for interrupts every _ iterations
+    uvec iters(N, fill::zeros);       // how many actual iterations
 
     rowvec b2_wgts(N);
 
     RcppThread::ProgressBar bar(N, 1);
-    pool.parallelFor(0, N, [&] (int i) {
+    pool.parallelFor(0, N, [&](int i)
+                     {
         int reject_ct = 0;
         bool ok = false;
         int idx;
@@ -552,15 +616,14 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
         if (verbosity >= 3) {
             bar++;
         }
-        RcppThread::checkUserInterrupt(i % check_int == 0);
-    });
+        RcppThread::checkUserInterrupt(i % check_int == 0); });
     pool.wait();
-        
 
-    progenitor_mat.row(dist_ctr) = uniques + 1; 
+    progenitor_mat.row(dist_ctr) = uniques + 1;
 
     accept_rate = N / (1.0 * sum(iters));
-    if (verbosity >= 3) {
+    if (verbosity >= 3)
+    {
         Rcout << "  " << std::setprecision(2) << 100.0 * accept_rate << "% acceptance rate, ";
     }
 
@@ -573,7 +636,7 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
     log_labels = log_labels_new;
     dist_grs = dist_grs_new;
     ancestors = ancestors_new;
-    n_unique = ((uvec) find_unique(uniques)).n_elem;
+    n_unique = ((uvec)find_unique(uniques)).n_elem;
 }
 
 /*
@@ -581,28 +644,33 @@ void split_maps(const Graph &g, const uvec &counties, Multigraph &cg,
  */
 double split_map(const Graph &g, const uvec &counties, Multigraph &cg,
                  subview_col<uword> districts, int dist_ctr, const uvec &pop,
-                 double total_pop, double &lower, double upper, double target, int k) {
+                 double total_pop, double &lower, double upper, double target, int k)
+{
     int V = g.size();
 
     Tree ust = init_tree(V);
     std::vector<bool> ignore(V);
-    for (int i = 0; i < V; i++) ignore[i] = districts(i) != 0;
+    for (int i = 0; i < V; i++)
+        ignore[i] = districts(i) != 0;
 
     int root;
     ust = sample_sub_ust(g, ust, V, root, ignore, pop, lower, upper, counties, cg);
-    if (ust.size() == 0) return -std::log(0.0);
+    if (ust.size() == 0)
+        return -std::log(0.0);
 
     double new_pop = cut_districts(ust, k, root, districts, dist_ctr, pop, total_pop,
-                          lower, upper, target);
+                                   lower, upper, target);
 
-    if (new_pop == 0) {
+    if (new_pop == 0)
+    {
         return -std::log(0.0); // reject sample
-    } else {
-        lower = new_pop;  // set `lower` as a way to return population of new district
-        return log_boundary(g, districts, 0, dist_ctr);// - log((double) k); (k is constant)
+    }
+    else
+    {
+        lower = new_pop;                                // set `lower` as a way to return population of new district
+        return log_boundary(g, districts, 0, dist_ctr); // - log((double) k); (k is constant)
     }
 }
-
 
 // TESTED
 /*
@@ -610,7 +678,8 @@ double split_map(const Graph &g, const uvec &counties, Multigraph &cg,
  */
 double cut_districts(Tree &ust, int k, int root, subview_col<uword> &districts,
                      int dist_ctr, const uvec &pop, double total_pop,
-                     double lower, double upper, double target) {
+                     double lower, double upper, double target)
+{
     int V = ust.size();
     // create list that points to parents & computes population below each vtx
     std::vector<int> pop_below(V, 0);
@@ -618,56 +687,67 @@ double cut_districts(Tree &ust, int k, int root, subview_col<uword> &districts,
     parent[root] = -1;
     tree_pop(ust, root, pop, pop_below, parent);
     // compile a list of:
-    std::vector<int> candidates; // candidate edges to cut,
+    std::vector<int> candidates;   // candidate edges to cut,
     std::vector<double> deviances; // how far from target pop.
-    std::vector<bool> is_ok; // whether they meet constraints
+    std::vector<bool> is_ok;       // whether they meet constraints
     candidates.reserve(k);
     deviances.reserve(k);
     is_ok.reserve(k);
     int distr_root = districts(root);
-    for (int i = 1; i <= V; i++) { // 1-indexing here
-        if (districts(i - 1) != distr_root || i - 1 == root) continue;
+    for (int i = 1; i <= V; i++)
+    { // 1-indexing here
+        if (districts(i - 1) != distr_root || i - 1 == root)
+            continue;
         double below = pop_below.at(i - 1);
         double dev1 = std::fabs(below - target);
         double dev2 = std::fabs(total_pop - below - target);
-        if (dev1 < dev2) {
+        if (dev1 < dev2)
+        {
             candidates.push_back(i);
             deviances.push_back(dev1);
             is_ok.push_back(lower < below && below < upper);
-        } else {
+        }
+        else
+        {
             candidates.push_back(-i);
             deviances.push_back(dev2);
             is_ok.push_back(lower < total_pop - below && total_pop - below < upper);
         }
     }
-    if ((int) candidates.size() < k) return 0.0;
+    if ((int)candidates.size() < k)
+        return 0.0;
 
     int idx = r_int(k);
     idx = select_k(deviances, idx + 1);
     int cut_at = std::fabs(candidates[idx]) - 1;
     // reject sample
-    if (!is_ok[idx]) return 0.0;
+    if (!is_ok[idx])
+        return 0.0;
 
     // find index of node to cut at
     std::vector<int> *siblings = &ust[parent[cut_at]];
     int length = siblings->size();
     int j;
-    for (j = 0; j < length; j++) {
-        if ((*siblings)[j] == cut_at) break;
+    for (j = 0; j < length; j++)
+    {
+        if ((*siblings)[j] == cut_at)
+            break;
     }
 
-    siblings->erase(siblings->begin()+j); // remove edge
+    siblings->erase(siblings->begin() + j); // remove edge
     parent[cut_at] = -1;
 
-    if (candidates[idx] > 0) { // if the newly cut district is final
+    if (candidates[idx] > 0)
+    { // if the newly cut district is final
         assign_district(ust, districts, cut_at, dist_ctr);
         return pop_below.at(cut_at);
-    } else { // if the root-side district is final
+    }
+    else
+    { // if the root-side district is final
         assign_district(ust, districts, root, dist_ctr);
         return total_pop - pop_below.at(cut_at);
     }
 }
-
 
 /*
  * Choose k and multiplier for efficient, accurate sampling
@@ -675,12 +755,13 @@ double cut_districts(Tree &ust, int k, int root, subview_col<uword> &districts,
 void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double thresh,
                       double tol, const umat &districts, const uvec &counties,
                       Multigraph &cg, const uvec &pop,
-                      const vec &pop_left, double target, int verbosity) {
+                      const vec &pop_left, double target, int verbosity)
+{
     // sample some spanning trees and compute deviances
     int V = g.size();
-    int k_max = std::min(10 + (int) (2.0 * V * tol), last_k + 4); // heuristic
+    int k_max = std::min(10 + (int)(2.0 * V * tol), last_k + 4); // heuristic
     int N_max = districts.n_cols;
-    int N_adapt = std::min(60 + (int) std::floor(5000.0 / sqrt((double)V)), N_max);
+    int N_adapt = std::min(60 + (int)std::floor(5000.0 / sqrt((double)V)), N_max);
 
     double lower = target * (1 - tol);
     double upper = target * (1 + tol);
@@ -688,30 +769,36 @@ void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double 
     // 2D array(not nec. sq.) of sampled usts (rows) and their deviations (cols)
     std::vector<std::vector<double>> devs;
     devs.reserve(N_adapt);
-    vec distr_ok(k_max+1, fill::zeros);
+    vec distr_ok(k_max + 1, fill::zeros);
     int root;
     int max_ok = 0;
     std::vector<bool> ignore(V);
     int idx = 0;
     int max_V = 0;
-    for (int i = 0; i < N_max && idx < N_adapt; i++, idx++) {
-        if (std::isinf(lp(i))) { // skip if not valid
+    for (int i = 0; i < N_max && idx < N_adapt; i++, idx++)
+    {
+        if (std::isinf(lp(i)))
+        { // skip if not valid
             idx--;
             continue;
         }
 
         Tree ust = init_tree(V);
         int n_vtx = V;
-        for (int j = 0; j < V; j++) {
-            if (districts(j, i) != 0) {
+        for (int j = 0; j < V; j++)
+        {
+            if (districts(j, i) != 0)
+            {
                 ignore[j] = true;
                 n_vtx--;
             }
         }
-        if (n_vtx > max_V) max_V = n_vtx;
+        if (n_vtx > max_V)
+            max_V = n_vtx;
 
         ust = sample_sub_ust(g, ust, V, root, ignore, pop, lower, upper, counties, cg);
-        if (ust.size() == 0) {
+        if (ust.size() == 0)
+        {
             idx--;
             continue;
         }
@@ -719,10 +806,14 @@ void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double 
         // For this tree return the vector of devs for the cut
         devs.push_back(tree_dev(ust, root, pop, pop_left(i), target));
         int n_ok = 0;
-        for (int j = 0; j < V-1; j++) {
-            if (devs.at(idx).at(j) <= tol) { // sorted
+        for (int j = 0; j < V - 1; j++)
+        {
+            if (devs.at(idx).at(j) <= tol)
+            { // sorted
                 n_ok++;
-            } else {
+            }
+            else
+            {
                 break;
             }
         }
@@ -735,33 +826,42 @@ void adapt_parameters(const Graph &g, int &k, int last_k, const vec &lp, double 
         Rcpp::checkUserInterrupt();
     }
 
-    if (idx < N_adapt) N_adapt = idx; // if rejected too many in last step
+    if (idx < N_adapt)
+        N_adapt = idx; // if rejected too many in last step
     // For each k, compute pr(selected edge within top k),
     // among maps where valid edge was selected
-    for (k = 1; k <= k_max; k++) {
+    for (k = 1; k <= k_max; k++)
+    {
         double sum_within = 0;
         int n_ok = 0;
-        for (int i = 0; i < N_adapt; i++) {
+        for (int i = 0; i < N_adapt; i++)
+        {
             double dev = devs.at(i).at(r_int(k));
-            if (dev > tol) continue;
-            else n_ok++;
-            for (int j = 0; j < N_adapt; j++) {
-                sum_within += ((double) (dev <= devs.at(j).at(k-1))) / N_adapt;
+            if (dev > tol)
+                continue;
+            else
+                n_ok++;
+            for (int j = 0; j < N_adapt; j++)
+            {
+                sum_within += ((double)(dev <= devs.at(j).at(k - 1))) / N_adapt;
             }
         }
-        if (sum_within / n_ok >= thresh) break;
+        if (sum_within / n_ok >= thresh)
+            break;
     }
 
-    if (k >= k_max) {
-        if (verbosity >= 3) {
+    if (k >= k_max)
+    {
+        if (verbosity >= 3)
+        {
             Rcout << " [maximum hit; falling back to naive k estimator]";
         }
         k = max_ok;
     }
 
-    if (last_k < k_max && k < last_k * 0.6) k = (int) (0.5*k + 0.5*last_k);
+    if (last_k < k_max && k < last_k * 0.6)
+        k = (int)(0.5 * k + 0.5 * last_k);
 
     k = std::min(std::max(max_ok + 1, k) + 1 - (distr_ok(k) > 0.99) + (thresh == 1),
                  max_V - 1);
 }
-
