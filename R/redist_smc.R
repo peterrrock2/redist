@@ -294,6 +294,12 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
         }
 
         n_unique <- NA
+        algout$resample_index <- NA
+        algout$old_plans <- algout$plans
+
+        if (is.null(algout$old_plans)) {
+            stop("Error: old_plans was not set properly.")
+        }
         if (resample) {
             if (!truncate) {
                 mod_wgt <- wgt
@@ -311,8 +317,8 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
             rs_idx <- resample_lowvar(mod_wgt)
             n_unique <- dplyr::n_distinct(rs_idx)
             algout$plans <- algout$plans[, rs_idx, drop = FALSE]
-            # algout$log_labels = algout$log_labels[rs_idx]
             algout$ancestors <- algout$ancestors[rs_idx, , drop = FALSE]
+            algout$resample_index <- rs_idx
             storage.mode(algout$ancestors) <- "integer"
         }
         storage.mode(algout$plans) <- "integer"
@@ -357,6 +363,8 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
                  {format(t2-t1, digits=2)}")
     }
 
+    all_resample_indices <- do.call(cbind, lapply(all_out, function(x) x$resample_index))
+    old_plans <- do.call(cbind, lapply(all_out, function(x) x$old_plans))
     plans <- do.call(cbind, lapply(all_out, function(x) x$plans))
     wgt <- do.call(c, lapply(all_out, function(x) x$wgt))
     l_diag <- lapply(all_out, function(x) x$l_diag)
@@ -394,6 +402,9 @@ redist_smc <- function(map, nsims, counties = NULL, compactness = 1, constraints
     out <- out %>% mutate(b1_probs =  as.vector((all_out[[1]]$b1_probs_mat)))
     out <- out %>% mutate(b2_wgt =  as.vector((all_out[[1]]$b2_wgts_mat)))
     out <- out %>% mutate(parent = as.vector((all_out[[1]]$all_progenitors)))
+
+    attr(out, "old_plans") <- old_plans
+    attr(out, "resample_indices") <- all_resample_indices
 
     out
 }
